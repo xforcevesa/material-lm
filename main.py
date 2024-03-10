@@ -1,8 +1,4 @@
-def run_tests():
-    from test import decoder_test, mlp_regressor_test, ridge_test
-    decoder_test()
-    mlp_regressor_test()
-    ridge_test()
+from test import run_tests
 
 
 def main():

@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import numpy as np
 
 
 class MLP(nn.Module):
@@ -38,3 +39,9 @@ class MLPRegressor(nn.Module):
         inter = torch.cat([self.src_mlp(src), self.trg_mlp(trg)], dim=1)
         return self.out_mlp(inter)
 
+    @classmethod
+    def test(cls):
+        from test import test_model
+        batch_size = np.random.randint(10, 2000)
+        model = MLPRegressor(input_src=5, input_trg=14, hidden_size=5, hidden_depth=3, inter_size=20, output_size=4)
+        test_model("mlp_regressor_test", model, batch_size)

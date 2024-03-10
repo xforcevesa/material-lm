@@ -18,14 +18,14 @@ einops
 numpy
 ```
 
-## TODO
+## TODO Lists
 
 1. MLP Regressor (Finished)
 2. Ridge Regression (Finished)
 3. Random Forests
 4. Support Vector Regression
 5. Transformer - Decoder (Finished)
-6. MAMBA
+6. MAMBA (Finished)
 7. RWKV
 8. ResNet
 9. Markov Chains

@@ -130,7 +130,6 @@ class DeEmbedding(nn.Module):
             nn.Linear(in_features=embed_dim, out_features=embed_depth),
             nn.ELU(),
             nn.Linear(in_features=embed_depth, out_features=1),
-            nn.ELU(),
             nn.Flatten(start_dim=-2)
         )
 
@@ -139,11 +138,11 @@ class DeEmbedding(nn.Module):
         return output
 
 
-class TransformerModel(nn.Module):
+class Transformer(nn.Module):
 
     def __init__(self, embed_size: int, hidden_size: int, n_heads: int, embed_depth: int, batch_size: int,
-                 dropout_prob: float, tgt_size: int, output_size: int) -> None:
-        super(TransformerModel, self).__init__()
+                 dropout_prob: float, tgt_size: int, output_size: int, n_encoders: int = 1, n_decoders: int = 1) -> None:
+        super(Transformer, self).__init__()
         self.src_embed = Embedding(embed_dim=embed_size, embed_depth=embed_depth)
         self.tgt_linear = nn.Sequential(
             nn.Linear(in_features=tgt_size, out_features=hidden_size),
@@ -151,8 +150,18 @@ class TransformerModel(nn.Module):
             nn.Linear(in_features=hidden_size, out_features=output_size)
         )
         self.trg_embed = Embedding(embed_dim=embed_size, embed_depth=embed_depth)
-        self.encoder = Decoder(n_heads=n_heads, embed_dim=embed_size, hidden_dim=hidden_size, dropout_prob=dropout_prob)
-        self.decoder = Decoder(n_heads=n_heads, embed_dim=embed_size, hidden_dim=hidden_size, dropout_prob=dropout_prob)
+        self.encoders = nn.ModuleList(
+            [
+                Decoder(n_heads=n_heads, embed_dim=embed_size, hidden_dim=hidden_size, dropout_prob=dropout_prob)
+                for _ in range(n_encoders)
+            ]
+        )
+        self.decoders = nn.ModuleList(
+            [
+                Decoder(n_heads=n_heads, embed_dim=embed_size, hidden_dim=hidden_size, dropout_prob=dropout_prob)
+                for _ in range(n_decoders)
+            ]
+        )
         self.pe = PositionalEncoding(d_model=embed_size, batch_size=batch_size)
         self.de_embed = DeEmbedding(embed_dim=embed_size, embed_depth=embed_depth)
 
@@ -161,7 +170,20 @@ class TransformerModel(nn.Module):
         trg = self.trg_embed(self.tgt_linear(trg))  # tgt: [batch_size, src_size, embed_size]
         src = self.pe(src)
         trg = self.pe(trg)
-        output = self.encoder(src)
-        output = self.decoder(trg, output)
+        output: torch.Tensor = src
+        for encoder in self.encoders:
+            output = encoder(output)
+        src_output = output.clone()
+        output = trg
+        for decoder in self.decoders:
+            output = decoder(output, src_output)
         output = self.de_embed(output)
         return output
+
+    @classmethod
+    def test(cls):
+        from test import test_model
+        batch_size = np.random.randint(10, 2000)
+        model = Transformer(n_heads=2, embed_size=10, hidden_size=20, dropout_prob=0, tgt_size=14,
+                            output_size=4, batch_size=batch_size, embed_depth=100, n_encoders=10, n_decoders=10)
+        test_model("decoder_test", model, batch_size)
