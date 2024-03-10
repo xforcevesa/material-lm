@@ -106,10 +106,5 @@ class Mamba(nn.Module):
         batch_size = np.random.randint(10, 2000)
         model = cls(embed_dim=10, hidden_size=20, input_size=6, dt_size=10, inner_dim=10, kernel_size=3,
                     output_size=4, embed_depth=10, n_layers=10, state_dim=10)
-        input_src = torch.randn((batch_size, 5 + 1))
-        input_trg = torch.randn((batch_size, 14))
-        input_src[:, -1] = input_trg.argmax(dim=1)
-        output = model(input_src)
-        assert output.shape == torch.Size([batch_size, 4]), \
-            f'output shape expected: {[batch_size]}, but got {list(output.shape)}'
-        print(f"mamba_test: success! output shape: {list(output.shape)}")
+        from utils.test import test_model2
+        test_model2('mamba_test', model, batch_size)

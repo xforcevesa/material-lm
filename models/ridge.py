@@ -24,10 +24,5 @@ class Ridge(nn.Module):
     def test(cls):
         batch_size = np.random.randint(10, 2000)
         model = cls(input_dim=5 + 1, output_dim=4)
-        input_src = torch.randn((batch_size, 5 + 1))
-        input_trg = torch.randn((batch_size, 14))
-        input_src[:, -1] = input_trg.argmax(dim=1)
-        output = model(input_src)
-        assert output.shape == torch.Size([batch_size, 4]), \
-            f'output shape expected: {[batch_size]}, but got {list(output.shape)}'
-        print(f"ridge_test: success! output shape: {list(output.shape)}")
+        from utils.test import test_model2
+        test_model2('ridge_test', model, batch_size)

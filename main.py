@@ -1,4 +1,4 @@
-from test import run_tests
+from utils.test import run_tests
 
 
 def main():

@@ -182,7 +182,7 @@ class Transformer(nn.Module):
 
     @classmethod
     def test(cls):
-        from test import test_model
+        from utils.test import test_model
         batch_size = np.random.randint(10, 2000)
         model = Transformer(n_heads=2, embed_size=10, hidden_size=20, dropout_prob=0, tgt_size=14,
                             output_size=4, batch_size=batch_size, embed_depth=100, n_encoders=10, n_decoders=10)

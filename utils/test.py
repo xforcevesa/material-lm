@@ -14,6 +14,19 @@ def test_model(test: str, model: torch.nn.Module, batch_size: int):
     print(f"{test}: success! output shape: {list(output.shape)}")
 
 
+def test_model2(test: str, model: torch.nn.Module, batch_size: int):
+    # src: [B, 6]
+    # out: [B, 4]
+    model.eval()
+    input_src = torch.randn((batch_size, 5 + 1))
+    input_trg = torch.randn((batch_size, 14))
+    input_src[:, -1] = input_trg.argmax(dim=1)
+    output = model(input_src)
+    assert output.shape == torch.Size([batch_size, 4]), \
+        f'output shape expected: {[batch_size, 4]}, but got {list(output.shape)}'
+    print(f"{test}: success! output shape: {list(output.shape)}")
+
+
 def run_tests():
     from models.ridge import Ridge
     Ridge.test()
@@ -23,3 +36,7 @@ def run_tests():
     MLPRegressor.test()
     from models.mamba import Mamba
     Mamba.test()
+    from models.resnet import ResNet
+    ResNet.test()
+    from models.rwkv import RWKV
+    RWKV.test()
