@@ -71,7 +71,7 @@ class MambaBlock(nn.Module):
         x = self.conv(x)[:, :, :seq_len]
         x = einops.rearrange(x, 'b d l -> b l d')
         x = self.act(x)
-        output_tensor = self.selective_ssm(x)
+        output_tensor = self.selective_ssm(x) * zeta
         return self.output_linear(output_tensor) + input_tensor
 
 
