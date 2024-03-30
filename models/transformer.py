@@ -1,10 +1,12 @@
-from torch import nn
+from torch import nn, optim
 import torch
 from typing import Tuple
 import numpy as np
+from torch.nn import functional as F
+from tqdm import trange
 
 
-#下面三个函数为辅助函数，无需理解
+# 下面三个函数为辅助函数，无需理解
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
     """
     Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
@@ -54,9 +56,9 @@ def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
 
 
 def apply_rotary_emb(
-    xq: torch.Tensor,
-    xk: torch.Tensor,
-    freqs_cis: torch.Tensor,
+        xq: torch.Tensor,
+        xk: torch.Tensor,
+        freqs_cis: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary embeddings to input tensors using the given frequency tensor.
@@ -161,7 +163,7 @@ class Attention(nn.Module):
         self.head_dim = head_dim
         # 思考题：相对位置编码和绝对位置编码有什么区别
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, 
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None,
                 freqs_cis: torch.Tensor = None) -> torch.Tensor:
         # Attention的Tensor形状变化较为繁琐，注意写出每步的形状变化
         batch_size, seqlen, hidden_state = x.size()
@@ -177,7 +179,7 @@ class Attention(nn.Module):
         value = value.transpose(1, 2)
         attn_score = (query @ key.transpose(2, 3)) / np.sqrt(self.head_dim)
         if mask is not None:
-            attn_score += mask
+            attn_score = attn_score + mask
         output = self.act(attn_score.float()) @ value
         output = output.transpose(1, 2).reshape(batch_size, seqlen, hidden_state)
         return self.o_proj(output)
@@ -209,10 +211,10 @@ class TransformerBlock(nn.Module):
         self.ffn = FFN(head_dim * head)
         # 思考题：两种做法有何不同
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, 
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None,
                 freqs_cis: torch.Tensor = None) -> torch.Tensor:
-        x += self.norm_a(self.attn(x, mask, freqs_cis))
-        x += self.norm_b(self.ffn(x))
+        x = self.norm_a(self.attn(x, mask, freqs_cis)) + x
+        x = self.norm_b(self.ffn(x)) + x
         return x
 
 
@@ -253,7 +255,7 @@ class Transformer(nn.Module):
         hidden_state = trnasformer_blocks(hidden_state,mask,freqs_cis)
         out = lm_head(hidden_state)
         '''
-        #使用相对位置编码取消下面的注释
+        # 使用相对位置编码取消下面的注释
         '''
         self.freqs_cis = precompute_freqs_cis(
             head_dim, max_seq_len * 2
@@ -262,25 +264,99 @@ class Transformer(nn.Module):
         self.token_embedding = nn.Embedding(vocab_size, heads * head_dim)
         self.freqs_cis = precompute_freqs_cis(
             head_dim, max_seq_len * 2
-        )
+        ).cuda(0)
         self.transformer_blocks = nn.ModuleList([
             TransformerBlock(head_dim, heads) for _ in range(layers)
         ])
-        self.lm_head = nn.Linear(head_dim * heads, vocab_size)
+        self.lm_head = nn.Sequential(
+            nn.Linear(head_dim * heads, vocab_size),
+            nn.Softmax(dim=-1)
+        )
 
-    @torch.inference_mode
+    # @torch.inference_mode
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.token_embedding(x)
         for layer in self.transformer_blocks:
             x = layer(x, freqs_cis=self.freqs_cis[:x.shape[1]])
         return self.lm_head(x)
 
-if __name__ == '__main__':
+
+def test_model():
     # run it!
-    torch.set_default_device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    vocab_size = 64000 # 与Yi保持一致
-    transformer = Transformer(12,32,64,2048,vocab_size)
-    tokens = torch.arange(0,2048).view(1,-1)
+    # torch.set_default_device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    vocab_size = 64000  # 与Yi保持一致
+    transformer = Transformer(2, 2, 4, 2048, vocab_size).cuda(0)
+    tokens = torch.arange(0, 2048).view(1, -1).cuda(0)
     out = transformer(tokens)
-    # print(out.shape)
-    print(out.shape == torch.Size([1, 2048, vocab_size])) # 输出True为成功
+    print(out.shape)
+    print(out.shape == torch.Size([1, 2048, vocab_size]))  # 输出True为成功
+
+
+def test_text_input():
+    from transformers import BertTokenizer
+    text = 'hello world'
+    # torch.set_default_device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+    encoded_input = tokenizer(text, return_tensors='pt')['input_ids'][0]
+    encoded_input = encoded_input.view(1, -1)
+    transformer = Transformer(2, 2, 4, 512, tokenizer.vocab_size).cuda(0)
+    out = transformer(encoded_input.cuda(0))
+    print(out.shape)
+    print(out.shape == torch.Size([*encoded_input.shape, tokenizer.vocab_size]))
+
+
+def train_model():
+    from transformers import AutoTokenizer
+    import json
+    tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen-tokenizer')
+    with open('./openwebtext_json/openwebtext_1.json', 'r') as file:
+        text_set = json.load(file)
+    print("DATA LOAD SUCCESS")
+    transformer = Transformer(16, 6, 240, 4096, tokenizer.vocab_size + 1).cuda(0)
+    print("MODEL LOAD SUCCESS")
+    print(f'Number of parameters: {sum([param.nelement() for param in transformer.parameters()])}')
+    optimizer = optim.AdamW(transformer.parameters())
+    criterion = nn.CrossEntropyLoss()
+
+    for epoch in range(200):
+        print(f'Epoch: {epoch}')
+        for index, text in enumerate(text_set):
+            input_tensor = torch.zeros(4096)
+            encoded_input = tokenizer(text, return_tensors='pt')['input_ids'][0]
+            input_tensor[0: len(encoded_input)] = encoded_input
+            input_tensor[len(encoded_input)] = tokenizer.eos_token_id
+            input_tensor = input_tensor.view(1, -1)
+            loss_total = .0
+            progress = trange(1, len(encoded_input))
+            for step in progress:
+                optimizer.zero_grad()
+                input_t = torch.concat([input_tensor[:, :step], torch.ones(1, 1) * tokenizer.pad_token_id], dim=-1)
+                # print(input_t.cpu(), tokenizer.vocab_size)
+                # exit(0)
+                output: torch.Tensor = transformer(input_t.int().cuda(0))
+                # print(input_t.shape, output.shape)
+
+                del input_t
+                pred = F.one_hot(input_tensor[:, :step + 1].long().cuda(0), num_classes=tokenizer.vocab_size + 1).float().cuda()
+                # print(input_t.shape, output.shape)
+                loss: torch.Tensor = criterion(pred, output)
+                ll = loss.detach().cpu().numpy().mean()
+                loss_total += ll
+                progress.desc = f'Loss: {ll}'
+                loss.backward()
+                optimizer.step()
+            print(f'index: {index}, loss: {loss_total / len(progress)}')
+
+
+def main():
+    # import os
+    # os.environ['http_proxy'] = 'http://127.0.0.1:8889'
+    # os.environ['https_proxy'] = 'http://127.0.0.1:8889'
+    # test_model()
+    # test_text_input()
+    torch.autograd.set_detect_anomaly(True)
+    train_model()
+
+
+if __name__ == '__main__':
+    main()
