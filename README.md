@@ -2,7 +2,11 @@
 
 ## Synopsis
 
-- See task
+- See task and workspace directories
+- beautiful_soap.py: fetch the basic information of papers, including abstracts, titles, original pdfs and their kimi APIs.
+- wget_lists.py: according to the data.json beautiful_soap.py generates, generate the wget-lists.
+- request.py: crawl thw kimi APIs.
+- Before using them, you should change the directories to meet your environment.
 
 # material-lm
 
